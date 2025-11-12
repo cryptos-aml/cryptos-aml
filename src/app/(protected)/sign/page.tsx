@@ -70,23 +70,23 @@ export default function SignPage() {
       const provider = new ethers.BrowserProvider(window.ethereum);
       const signer = await provider.getSigner();
 
-      // Fetch signing parameters from server
-      const paramsResponse = await fetch("/api/sign-params");
+      // Convert amount to wei first
+      const valueInWei = ethers.parseEther(amount).toString();
+
+      // Fetch signing parameters from server with wallet and value
+      const paramsResponse = await fetch(
+        `/api/sign-params?wallet=${walletAddress}&value=${valueInWei}`
+      );
       if (!paramsResponse.ok) {
-        throw new Error("Failed to get signing parameters");
+        const errorData = await paramsResponse.json();
+        throw new Error(errorData.error || "Failed to get signing parameters");
       }
 
       const params = await paramsResponse.json();
       const { domain, types, message } = params;
 
-      // Override owner with current wallet
-      message.owner = walletAddress;
-
       // Sign with EIP-712
       const signature = await signer.signTypedData(domain, types, message);
-
-      // Convert amount to wei
-      const valueInWei = ethers.parseEther(amount).toString();
 
       // Submit to server with minimal data
       const data = await createDeclaration({
