@@ -2,12 +2,11 @@
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { ethers } from "ethers";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { ArrowLeft, PenIcon } from "lucide-react";
+import { PenIcon, ChevronRight } from "lucide-react";
 import { getDeclarationsByWallet } from "../../_actions/declarations";
+import { StatusBadge } from "@/components/status-badge";
 
 interface Declaration {
   _id: string;
@@ -20,6 +19,7 @@ interface Declaration {
   createdAt: string;
   nonce: string;
   deadline: number;
+  txHash?: string | null;
 }
 
 export default function DeclarationsPage() {
@@ -61,10 +61,6 @@ export default function DeclarationsPage() {
     init();
   }, []);
 
-  // Calculate timestamp once
-  // eslint-disable-next-line
-  const currentTimestamp = Math.floor(Date.now() / 1000);
-
   const formatDate = (dateString: string) => {
     return new Date(dateString).toLocaleDateString("en-US", {
       year: "numeric",
@@ -73,32 +69,6 @@ export default function DeclarationsPage() {
       hour: "2-digit",
       minute: "2-digit",
     });
-  };
-
-  const formatAddress = (address: string) => {
-    return `${address.slice(0, 6)}...${address.slice(-4)}`;
-  };
-
-  const getStatusVariant = (status: string, deadline: number) => {
-    if (status === "pending" && deadline < currentTimestamp) {
-      return "destructive" as const;
-    }
-
-    switch (status) {
-      case "executed":
-        return "default" as const;
-      case "failed":
-        return "destructive" as const;
-      default:
-        return "secondary" as const;
-    }
-  };
-
-  const getStatusText = (status: string, deadline: number) => {
-    if (status === "pending" && deadline < currentTimestamp) {
-      return "EXPIRED";
-    }
-    return status.toUpperCase();
   };
 
   return (
@@ -135,59 +105,39 @@ export default function DeclarationsPage() {
               No declarations found
             </p>
           ) : (
-            <div className="space-y-4">
+            <div className="space-y-3">
               {declarations.map((decl) => (
-                <Card key={decl._id} className="bg-muted/50 border-border">
-                  <CardContent className="pt-3 pb-3 space-y-2">
-                    <div className="flex items-center justify-between mb-1">
-                      <Badge
-                        variant={getStatusVariant(decl.status, decl.deadline)}
-                        className="text-xs"
-                      >
-                        {getStatusText(decl.status, decl.deadline)}
-                      </Badge>
-                      <span className="text-xs text-muted-foreground">
-                        {formatDate(decl.createdAt)}
-                      </span>
-                    </div>
-                    <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-sm">
-                      <div>
-                        <p className="text-muted-foreground text-xs mb-0.5">
-                          Amount
-                        </p>
-                        <p className="font-medium">
-                          {ethers.formatEther(decl.value)} ETH
-                        </p>
+                <Card
+                  key={decl._id}
+                  className="bg-muted/50 border-border hover:bg-muted/70 transition-colors cursor-pointer"
+                  onClick={() => router.push(`/declarations/${decl._id}`)}
+                >
+                  <CardContent className="p-4">
+                    <div className="flex items-center justify-between gap-4">
+                      {/* Left: Amount & Status */}
+                      <div className="flex items-center gap-4">
+                        <div>
+                          <p className="text-lg font-semibold">
+                            {(parseFloat(decl.value) / 1000000).toFixed(2)} USDC
+                          </p>
+                          <p className="text-xs text-muted-foreground">
+                            {formatDate(decl.createdAt)}
+                          </p>
+                          {decl.txHash && (
+                            <p className="text-xs text-blue-500 font-mono mt-1">
+                              {decl.txHash.slice(0, 10)}...{decl.txHash.slice(-8)}
+                            </p>
+                          )}
+                        </div>
+                        <StatusBadge status={decl.status} className="text-xs" />
                       </div>
-                      <div className="text-right">
-                        <p className="text-muted-foreground text-xs mb-0.5">
-                          Vault
+
+                      {/* Right: Signature & Arrow */}
+                      <div className="flex items-center gap-3">
+                        <p className="font-mono text-xs text-muted-foreground">
+                          {decl.signature.slice(0, 10)}...{decl.signature.slice(-8)}
                         </p>
-                        <p className="font-mono text-xs">
-                          {formatAddress(decl.to)}
-                        </p>
-                      </div>
-                      <div className="col-span-2">
-                        <p className="text-muted-foreground text-xs mb-0.5">
-                          Payload Hash
-                        </p>
-                        <p className="font-mono text-xs break-all">
-                          {decl.payloadHash}
-                        </p>
-                      </div>
-                      <div className="col-span-2">
-                        <p className="text-muted-foreground text-xs mb-0.5">
-                          Signature
-                        </p>
-                        <p className="font-mono text-xs break-all">
-                          {decl.signature}
-                        </p>
-                      </div>
-                      <div className="col-span-2 text-right">
-                        <p className="text-muted-foreground text-xs mb-0.5">
-                          Nonce
-                        </p>
-                        <p className="font-mono text-xs">{decl.nonce}</p>
+                        <ChevronRight className="h-5 w-5 text-muted-foreground" />
                       </div>
                     </div>
                   </CardContent>

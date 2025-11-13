@@ -1,77 +1,78 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { 
-  VAULT_ADDRESS, 
-  AML_DECLARATION_TEXT, 
-  EIP712_DOMAIN, 
-  EIP712_TYPES,
+import { NextRequest, NextResponse } from "next/server";
+import {
+  AML_DECLARATION_TEXT,
   getDeadline,
-  generateNonceId
-} from '@/lib/constants';
+  generateNonce,
+  usdcToUnits,
+} from "@/lib/constants";
 
 export interface SignParamsResponse {
-  domain: typeof EIP712_DOMAIN;
-  types: typeof EIP712_TYPES;
-  message: {
-    owner: string;
-    to: string;
-    value: string;
-    message: string;
-    nonce: string;
-    deadline: number;
-  };
+  to: string;
+  amount: string;
+  nonce: string;
+  deadline: number;
+  message: string;
+  // For display
+  amountUsdc: string;
 }
 
 /**
- * GET /api/sign-params?wallet=0x...&value=1000000000000000000
- * Returns the complete EIP-712 signing parameters
+ * GET /api/sign-params?wallet=0x...&amount=100.50&to=0x...
+ * Returns signing parameters for amlChain contract
+ * Message format: keccak256(abi.encodePacked("Transfer", to, amount, nonce))
  */
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
-    const wallet = searchParams.get('wallet');
-    const value = searchParams.get('value');
+    const wallet = searchParams.get("wallet");
+    const amountUsdc = searchParams.get("amount");
+    const to = searchParams.get("to");
 
     // Validate wallet address
     if (!wallet || !wallet.match(/^0x[a-fA-F0-9]{40}$/)) {
       return NextResponse.json(
-        { error: 'Invalid wallet address' },
+        { error: "Invalid wallet address" },
         { status: 400 }
       );
     }
 
-    // Validate value
-    if (!value || value === '0') {
+    // Validate destination address
+    if (!to || !to.match(/^0x[a-fA-F0-9]{40}$/)) {
       return NextResponse.json(
-        { error: 'Invalid value' },
+        { error: "Invalid destination address" },
         { status: 400 }
       );
     }
 
-    // Generate unique nonce ID (base58 format, Solana-style)
-    const nonce = generateNonceId();
-    
+    // Validate amount
+    if (!amountUsdc || parseFloat(amountUsdc) <= 0) {
+      return NextResponse.json({ error: "Invalid amount" }, { status: 400 });
+    }
+
+    // Generate unique nonce as uint256
+    const nonce = generateNonce();
+
     // Calculate deadline
     const deadline = getDeadline();
 
-    // Build response with all signing parameters
+    // Convert USDC to token units (6 decimals)
+    const amount = usdcToUnits(amountUsdc);
+
+    // Build response
     const response: SignParamsResponse = {
-      domain: EIP712_DOMAIN,
-      types: EIP712_TYPES,
-      message: {
-        owner: wallet.toLowerCase(),
-        to: VAULT_ADDRESS,
-        value,
-        message: AML_DECLARATION_TEXT,
-        nonce,
-        deadline,
-      },
+      to,
+      amount,
+      nonce: nonce.toString(),
+      deadline,
+      message: AML_DECLARATION_TEXT,
+      amountUsdc,
     };
 
     return NextResponse.json(response, { status: 200 });
   } catch (error) {
-    console.error('Error generating sign params:', error);
+    console.error("Error generating sign params:", error);
     return NextResponse.json(
-      { error: 'Failed to generate signing parameters' },
+      { error: "Failed to generate signing parameters" },
       { status: 500 }
     );
   }

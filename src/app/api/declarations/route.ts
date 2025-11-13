@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { connectDB, Declaration } from "@/lib/mongodb";
 import { calculatePayloadHash } from "@/lib/crypto";
-import { VAULT_ADDRESS } from "@/lib/constants";
 import type {
   CreateDeclarationRequest,
   CreateDeclarationResponse,
@@ -18,13 +17,13 @@ export async function POST(request: NextRequest) {
     const body: CreateDeclarationRequest = await request.json();
 
     // Validate required fields
-    const { owner, value, signature, nonce, deadline } = body;
+    const { owner, to, value, signature, nonce, deadline } = body;
 
-    if (!owner || !value || !signature || nonce === undefined || !deadline) {
+    if (!owner || !to || !value || !signature || nonce === undefined || !deadline) {
       return NextResponse.json<ErrorResponse>(
         {
           error: "Missing required fields",
-          details: "owner, value, signature, nonce, and deadline are required",
+          details: "owner, to, value, signature, nonce, and deadline are required",
         },
         { status: 400 }
       );
@@ -38,6 +37,14 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Validate destination address
+    if (!to.match(/^0x[a-fA-F0-9]{40}$/)) {
+      return NextResponse.json<ErrorResponse>(
+        { error: "Invalid destination address" },
+        { status: 400 }
+      );
+    }
+
     // Validate signature format
     if (!signature.match(/^0x[a-fA-F0-9]{130}$/)) {
       return NextResponse.json<ErrorResponse>(
@@ -45,9 +52,6 @@ export async function POST(request: NextRequest) {
         { status: 400 }
       );
     }
-
-    // Server-controlled vault address
-    const to = VAULT_ADDRESS;
 
     // Calculate payload hash
     const payloadHash = calculatePayloadHash(owner, value, deadline);

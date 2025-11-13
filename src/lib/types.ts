@@ -29,10 +29,11 @@ export interface DeclarationMessage {
 
 /**
  * Request body for creating a new declaration (client-side)
- * Only the minimum required data from the frontend
+ * Compatible with amlChain contract format
  */
 export interface CreateDeclarationRequest {
   owner: string;
+  to: string;
   value: string;
   signature: string;
   nonce: string;

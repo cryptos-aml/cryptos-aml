@@ -1,54 +1,58 @@
-'use server';
+"use server";
 
-import { connectDB, Declaration } from '@/lib/mongodb';
-import { calculatePayloadHash } from '@/lib/crypto';
-import { VAULT_ADDRESS } from '@/lib/constants';
-import type { CreateDeclarationRequest, CreateDeclarationResponse } from '@/lib/types';
+import { connectDB, Declaration } from "@/lib/mongodb";
+import { calculatePayloadHash } from "@/lib/crypto";
+import type {
+  CreateDeclarationRequest,
+  CreateDeclarationResponse,
+} from "@/lib/types";
 
 /**
  * Server action to create a new AML declaration
- * Only accepts minimal data from client: owner, value, signature, nonce, deadline
- * All other parameters (vault, message) are controlled server-side
+ * Accepts: owner, to, value, signature, nonce, deadline
+ * Compatible with amlChain contract format
  */
 export async function createDeclaration(
   data: CreateDeclarationRequest
 ): Promise<CreateDeclarationResponse> {
-  const { owner, value, signature, nonce, deadline } = data;
+  const { owner, to, value, signature, nonce, deadline } = data;
 
   // Validate required fields
-  if (!owner || !value || !signature || !nonce || !deadline) {
-    throw new Error('Missing required fields');
+  if (!owner || !to || !value || !signature || !nonce || !deadline) {
+    throw new Error("Missing required fields");
   }
 
   // Validate owner address
   if (!owner.match(/^0x[a-fA-F0-9]{40}$/)) {
-    throw new Error('Invalid owner address');
+    throw new Error("Invalid owner address");
+  }
+
+  // Validate to address
+  if (!to.match(/^0x[a-fA-F0-9]{40}$/)) {
+    throw new Error("Invalid destination address");
   }
 
   // Validate signature format
   if (!signature.match(/^0x[a-fA-F0-9]{130}$/)) {
-    throw new Error('Invalid signature format');
+    throw new Error("Invalid signature format");
   }
 
-  // Validate nonce format (should be 11 character base58 string)
-  if (typeof nonce !== 'string' || nonce.length !== 11) {
-    throw new Error('Invalid nonce format');
+  // Validate nonce format (uint256 as string)
+  if (typeof nonce !== "string" || !/^\d+$/.test(nonce)) {
+    throw new Error("Invalid nonce format (must be uint256 string)");
   }
 
   // Validate value
   try {
     const valueNum = parseFloat(value);
     if (isNaN(valueNum) || valueNum <= 0) {
-      throw new Error('Invalid value: must be greater than 0');
+      throw new Error("Invalid value: must be greater than 0");
     }
   } catch {
-    throw new Error('Invalid value format');
+    throw new Error("Invalid value format");
   }
 
-  // Server-controlled parameters
-  const to = VAULT_ADDRESS;
-
-  // Calculate payload hash
+  // Calculate payload hash (for tracking purposes)
   const payloadHash = calculatePayloadHash(owner, value, deadline);
 
   // Connect to database
@@ -57,7 +61,9 @@ export async function createDeclaration(
   // Verify nonce is unique (prevent replay attacks)
   const existingNonce = await Declaration.findOne({ nonce });
   if (existingNonce) {
-    throw new Error('Nonce already used - please request new signing parameters');
+    throw new Error(
+      "Nonce already used - please request new signing parameters"
+    );
   }
 
   // Create declaration document
@@ -69,49 +75,86 @@ export async function createDeclaration(
     signature,
     nonce,
     deadline,
-    status: 'pending',
+    status: "pending",
   });
 
   return {
-    id: declaration._id?.toString() || '',
-    status: 'pending',
+    id: declaration._id?.toString() || "",
+    status: "pending",
     payloadHash,
   };
 }
 
 /**
- * Server action to fetch declarations for a wallet
+ * Server action to get declarations by wallet address
  */
 export async function getDeclarationsByWallet(wallet: string) {
-  // Validate wallet address format
-  if (!wallet || !wallet.match(/^0x[a-fA-F0-9]{40}$/)) {
-    throw new Error('Invalid wallet address format');
-  }
-
-  // Connect to database
   await connectDB();
 
-  // Query declarations for this wallet
-  const declarations = await Declaration.find({
-    owner: wallet.toLowerCase(),
-  })
+  const declarations = await Declaration.find({ owner: wallet.toLowerCase() })
     .sort({ createdAt: -1 })
-    .lean()
-    .exec();
+    .lean();
 
-  // Transform to JSON-serializable format
-  return declarations.map((doc) => ({
-    _id: doc._id?.toString(),
-    owner: doc.owner,
-    to: doc.to,
-    value: doc.value,
-    payloadHash: doc.payloadHash,
-    signature: doc.signature,
-    nonce: doc.nonce,
-    deadline: doc.deadline,
-    status: doc.status,
-    createdAt: doc.createdAt.toISOString(),
-    executedAt: doc.executedAt ? doc.executedAt.toISOString() : null,
-    txHash: doc.txHash || null,
-  }));
+  return JSON.parse(JSON.stringify(declarations));
+}
+
+/**
+ * Server action to get a single declaration by ID
+ */
+export async function getDeclarationById(id: string) {
+  try {
+    await connectDB();
+
+    const declaration = await Declaration.findById(id).lean();
+
+    if (!declaration) {
+      return null;
+    }
+
+    return JSON.parse(JSON.stringify(declaration));
+  } catch (error) {
+    console.error("Error fetching declaration:", error);
+    return null;
+  }
+}
+
+/**
+ * Server action to update transaction hash and status
+ */
+export async function updateDeclarationTransaction(
+  id: string,
+  txHash: string,
+  status?: "pending" | "executed" | "failed"
+) {
+  try {
+    await connectDB();
+
+    const updateData: {
+      txHash: string;
+      status?: string;
+      executedAt?: Date;
+    } = { txHash };
+
+    if (status) {
+      updateData.status = status;
+      if (status === "executed") {
+        updateData.executedAt = new Date();
+      }
+    }
+
+    const declaration = await Declaration.findByIdAndUpdate(
+      id,
+      updateData,
+      { new: true }
+    ).lean();
+
+    if (!declaration) {
+      throw new Error("Declaration not found");
+    }
+
+    return JSON.parse(JSON.stringify(declaration));
+  } catch (error) {
+    console.error("Error updating declaration:", error);
+    throw error;
+  }
 }

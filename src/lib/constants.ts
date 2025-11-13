@@ -3,8 +3,24 @@
  * These values are controlled by the backend and cannot be manipulated by the frontend
  */
 
-// TODO: Replace with actual vault address from client
-export const VAULT_ADDRESS = '0x0000000000000000000000000000000000000000';
+// USDC Token Address (from environment)
+export const USDC_ADDRESS =
+  process.env.NEXT_PUBLIC_USDC_ADDRESS ||
+  "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48";
+
+// AML Chain Contract Address (from environment)
+export const AML_CONTRACT_ADDRESS =
+  process.env.NEXT_PUBLIC_AML_CONTRACT_ADDRESS ||
+  "0x1AC81980E946A1A97e201fE59390Ec13e84f3173";
+
+// Chain ID (from environment, defaults to Mainnet)
+export const CHAIN_ID = process.env.NEXT_PUBLIC_CHAIN_ID
+  ? parseInt(process.env.NEXT_PUBLIC_CHAIN_ID)
+  : 1;
+
+console.log("USDC_ADDRESS", USDC_ADDRESS);
+console.log("AML_CONTRACT_ADDRESS", AML_CONTRACT_ADDRESS);
+console.log("CHAIN_ID", CHAIN_ID);
 
 // TODO: Replace with actual AML declaration text from client
 export const AML_DECLARATION_TEXT = `
@@ -16,26 +32,6 @@ I hereby declare that:
 5. I understand this declaration may be verified on-chain
 `.trim();
 
-// EIP-712 Domain configuration
-// TODO: Confirm these values match your smart contract
-export const EIP712_DOMAIN = {
-  name: 'Asset Manager AML Declaration',
-  version: '1',
-  chainId: 1, // Ethereum Mainnet
-} as const;
-
-// EIP-712 Types structure
-export const EIP712_TYPES = {
-  Declaration: [
-    { name: 'owner', type: 'address' },
-    { name: 'to', type: 'address' },
-    { name: 'value', type: 'uint256' },
-    { name: 'message', type: 'string' },
-    { name: 'nonce', type: 'string' },
-    { name: 'deadline', type: 'uint256' },
-  ],
-} as const;
-
 /**
  * Calculate deadline (30 days from now)
  * @returns Unix timestamp
@@ -45,41 +41,45 @@ export function getDeadline(): number {
 }
 
 /**
- * Generate a unique nonce ID in base58 format (Solana-style)
- * Format: 11 characters, cryptographically random
- * Example: 5Kn7xN9mPqL
+ * Generate a unique nonce as uint256
+ * Format: Unix timestamp + random number
+ * Example: 1700000000123456
  */
-export function generateNonceId(): string {
-  const base58Chars = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz';
-  const length = 11;
-  let result = '';
-  
-  // Use crypto for randomness
-  const randomValues = new Uint8Array(length);
-  if (typeof crypto !== 'undefined' && crypto.getRandomValues) {
-    crypto.getRandomValues(randomValues);
-  } else {
-    // Fallback for environments without crypto
-    for (let i = 0; i < length; i++) {
-      randomValues[i] = Math.floor(Math.random() * 256);
-    }
-  }
-  
-  for (let i = 0; i < length; i++) {
-    result += base58Chars[randomValues[i] % base58Chars.length];
-  }
-  
-  return result;
+export function generateNonce(): bigint {
+  // Use timestamp (in milliseconds) + random 6 digits
+  const timestamp = Date.now();
+  const random = Math.floor(Math.random() * 1000000);
+  const nonce = BigInt(timestamp) * BigInt(1000000) + BigInt(random);
+  return nonce;
 }
 
 /**
- * Get next nonce for a wallet (deprecated - now using nonce IDs)
- * Kept for backwards compatibility
+ * USDC has 6 decimals (not 18 like ETH)
  */
-export async function getNextNonce(walletAddress: string): Promise<number> {
-  const { Declaration } = await import('./mongodb');
-  const count = await Declaration.countDocuments({
-    owner: walletAddress.toLowerCase(),
-  });
-  return count + 1;
+export const USDC_DECIMALS = 6;
+
+/**
+ * Convert USDC amount to token units (with 6 decimals)
+ * @param amount USDC amount (e.g., "100.50")
+ * @returns Token units as string
+ */
+export function usdcToUnits(amount: string): string {
+  const parts = amount.split(".");
+  const whole = parts[0] || "0";
+  const fraction = (parts[1] || "")
+    .padEnd(USDC_DECIMALS, "0")
+    .slice(0, USDC_DECIMALS);
+  return whole + fraction;
+}
+
+/**
+ * Convert USDC units to human-readable amount
+ * @param units Token units (e.g., "100500000")
+ * @returns USDC amount as string (e.g., "100.50")
+ */
+export function unitsToUsdc(units: string): string {
+  const paddedUnits = units.padStart(USDC_DECIMALS + 1, "0");
+  const whole = paddedUnits.slice(0, -USDC_DECIMALS) || "0";
+  const fraction = paddedUnits.slice(-USDC_DECIMALS);
+  return `${whole}.${fraction}`.replace(/\.?0+$/, "") || "0";
 }

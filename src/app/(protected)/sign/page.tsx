@@ -4,27 +4,28 @@ import { useState, useEffect } from "react";
 import { ethers } from "ethers";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
-import { WalletInfo } from "../../_components/wallet-info";
-import { DeclarationForm } from "../../_components/declaration-form";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import { FileText } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { createDeclaration } from "../../_actions/declarations";
-import { VAULT_ADDRESS, AML_DECLARATION_TEXT } from "@/lib/constants";
-
-const DEFAULT_VAULT_ADDRESS = VAULT_ADDRESS;
+import { AML_DECLARATION_TEXT } from "@/lib/constants";
+import {
+  generateContractMessageHash,
+  signMessageHash,
+} from "@/lib/contract-helpers";
+import { WalletBalance } from "@/components/wallet-balance";
+import { toast } from "sonner";
 
 export default function SignPage() {
   const router = useRouter();
   const [walletAddress, setWalletAddress] = useState<string>("");
+  const [destinationAddress, setDestinationAddress] = useState<string>("");
   const [amount, setAmount] = useState<string>("");
-  const [vaultAddress, setVaultAddress] = useState<string>(
-    DEFAULT_VAULT_ADDRESS
-  );
   const [loading, setLoading] = useState(false);
-  const [success, setSuccess] = useState(false);
   const [error, setError] = useState<string>("");
-  const [payloadHash, setPayloadHash] = useState<string>("");
 
   // Get wallet address on mount
   useEffect(() => {
@@ -47,7 +48,7 @@ export default function SignPage() {
   }, []);
 
   const signDeclaration = async () => {
-    if (!walletAddress || !amount) {
+    if (!walletAddress || !amount || !destinationAddress) {
       setError("Please fill in all required fields");
       return;
     }
@@ -58,10 +59,14 @@ export default function SignPage() {
       return;
     }
 
+    if (!ethers.isAddress(destinationAddress)) {
+      setError("Please enter a valid Ethereum address");
+      return;
+    }
+
     try {
       setLoading(true);
       setError("");
-      setSuccess(false);
 
       if (!window.ethereum) {
         throw new Error("MetaMask not found");
@@ -70,12 +75,9 @@ export default function SignPage() {
       const provider = new ethers.BrowserProvider(window.ethereum);
       const signer = await provider.getSigner();
 
-      // Convert amount to wei first
-      const valueInWei = ethers.parseEther(amount).toString();
-
-      // Fetch signing parameters from server with wallet and value
+      // Fetch signing parameters from server
       const paramsResponse = await fetch(
-        `/api/sign-params?wallet=${walletAddress}&value=${valueInWei}`
+        `/api/sign-params?wallet=${walletAddress}&amount=${amount}&to=${destinationAddress}`
       );
       if (!paramsResponse.ok) {
         const errorData = await paramsResponse.json();
@@ -83,30 +85,47 @@ export default function SignPage() {
       }
 
       const params = await paramsResponse.json();
-      const { domain, types, message } = params;
+      const { to, amount: amountUnits, nonce, deadline } = params;
 
-      // Sign with EIP-712
-      const signature = await signer.signTypedData(domain, types, message);
+      // Generate message hash (as per contract)
+      const messageHash = generateContractMessageHash(to, amountUnits, nonce);
 
-      // Submit to server with minimal data
+      // Sign the message hash
+      const signature = await signMessageHash(signer, messageHash);
+
+      // Save to database
+      const loadingToast = toast.loading("Creating declaration...");
       const data = await createDeclaration({
         owner: walletAddress,
-        value: valueInWei,
+        to,
+        value: amountUnits,
         signature,
-        nonce: message.nonce,
-        deadline: message.deadline,
+        nonce,
+        deadline,
       });
 
-      setPayloadHash(data.payloadHash);
-      setSuccess(true);
+      // Dismiss loading and show success
+      toast.dismiss(loadingToast);
+      toast.success("Declaration created successfully!", {
+        duration: 2000,
+      });
+      
+      // Clear form
       setAmount("");
+      setDestinationAddress("");
+
+      // Redirect immediately after success
+      router.push(`/declarations/${data.id}`);
+
+      console.log("Declaration signed successfully:", data);
     } catch (err) {
       console.error("Error signing declaration:", err);
-      if (err instanceof Error) {
-        setError(err.message);
-      } else {
-        setError("Failed to sign declaration. Please try again.");
-      }
+      const errorMessage =
+        err instanceof Error
+          ? err.message
+          : "Failed to sign declaration. Please try again.";
+      setError(errorMessage);
+      toast.error(errorMessage);
     } finally {
       setLoading(false);
     }
@@ -131,25 +150,91 @@ export default function SignPage() {
             AML Declaration
           </CardTitle>
           <p className="text-center text-muted-foreground text-sm">
-            Sign your Anti-Money Laundering declaration on-chain
+            Sign your Anti-Money Laundering declaration for USDC transfers
           </p>
         </CardHeader>
 
         <CardContent className="space-y-4">
-          <WalletInfo address={walletAddress} />
+          {/* Wallet Info */}
+          <div className="space-y-2">
+            <Label className="text-xs text-muted-foreground">
+              Connected Wallet
+            </Label>
+            <div className="p-3 bg-muted border border-border rounded-md">
+              <p className="font-mono text-sm break-all">{walletAddress}</p>
+            </div>
+          </div>
+
+          {/* Balance */}
+          <WalletBalance />
+
           <Separator />
-          <DeclarationForm
-            amount={amount}
-            vaultAddress={vaultAddress}
-            declarationText={AML_DECLARATION_TEXT}
-            onAmountChange={setAmount}
-            onVaultAddressChange={setVaultAddress}
-            onSubmit={signDeclaration}
-            loading={loading}
-            error={error}
-            success={success}
-            payloadHash={payloadHash}
-          />
+
+          {/* Amount Input */}
+          <div className="space-y-2">
+            <Label htmlFor="amount">Amount (USDC)</Label>
+            <Input
+              id="amount"
+              type="number"
+              step="0.01"
+              min="0"
+              placeholder="Enter USDC amount (e.g., 100.50)"
+              value={amount}
+              onChange={(e) => setAmount(e.target.value)}
+              disabled={loading}
+            />
+            <p className="text-xs text-muted-foreground">
+              Enter the amount of USDC to transfer (6 decimals)
+            </p>
+          </div>
+
+          {/* Destination Address (Editable) */}
+          <div className="space-y-2">
+            <Label htmlFor="destination">Destination Address</Label>
+            <Input
+              id="destination"
+              type="text"
+              placeholder="0x..."
+              value={destinationAddress}
+              onChange={(e) => setDestinationAddress(e.target.value)}
+              disabled={loading}
+              className="font-mono"
+            />
+            <p className="text-xs text-muted-foreground">
+              Enter the Ethereum address where USDC will be sent
+            </p>
+          </div>
+
+          {/* AML Declaration Text */}
+          <div className="space-y-2">
+            <Label htmlFor="declaration">AML Declaration</Label>
+            <Textarea
+              id="declaration"
+              value={AML_DECLARATION_TEXT}
+              readOnly
+              rows={6}
+              className="resize-none font-mono text-xs"
+            />
+          </div>
+
+          {/* Sign Button */}
+          <Button
+            onClick={signDeclaration}
+            disabled={
+              loading || !walletAddress || !amount || !destinationAddress
+            }
+            className="w-full h-12"
+            size="lg"
+          >
+            {loading ? "Signing..." : "Sign AML Declaration"}
+          </Button>
+
+          {/* Error Message */}
+          {error && (
+            <div className="p-3 bg-destructive/10 border border-destructive/20 rounded-md">
+              <p className="text-sm text-destructive">{error}</p>
+            </div>
+          )}
         </CardContent>
       </Card>
 
