@@ -223,7 +223,7 @@ export function DeclarationClient({ declaration }: Props) {
         ? "http://localhost:8545" // Hardhat local - direct RPC
         : "https://sepolia.etherscan.io";
 
-    const etherscanUrl = `${etherscanBase}/address/${AML_CONTRACT_ADDRESS}#writeContract`;
+    const etherscanUrl = `${etherscanBase}/address/${AML_CONTRACT_ADDRESS}#writeContract#F3`;
     window.open(etherscanUrl, "_blank");
   };
 
