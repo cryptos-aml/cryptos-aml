@@ -11,11 +11,11 @@ import { toast } from "sonner";
 import { StatusBadge } from "@/components/status-badge";
 import { updateDeclarationTransaction } from "@/app/_actions/declarations";
 
-const AML_CONTRACT_ADDRESS = process.env.NEXT_PUBLIC_AML_CONTRACT_ADDRESS || "";
-const USDC_CONTRACT_ADDRESS = process.env.NEXT_PUBLIC_USDC_ADDRESS || "";
-const CHAIN_ID = process.env.NEXT_PUBLIC_CHAIN_ID
-  ? parseInt(process.env.NEXT_PUBLIC_CHAIN_ID)
-  : 1;
+import {
+  AML_CONTRACT_ADDRESS,
+  USDC_CONTRACT_ADDRESS,
+  CHAIN_ID,
+} from "@/lib/constants";
 
 // ABI minimal pour transferTokens
 const AML_ABI = [
