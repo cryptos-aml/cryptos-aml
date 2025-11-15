@@ -1,30 +1,21 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
-import { Check, Copy, ExternalLink, Send, ArrowLeft } from "lucide-react";
-import { ethers } from "ethers";
+import { Check, Copy, ExternalLink, Send } from "lucide-react";
 import { toast } from "sonner";
 import { StatusBadge } from "@/components/status-badge";
+import { DeclarationParameter } from "@/components/declaration-parameter";
+import { TransactionStatus } from "@/components/transaction-status";
+import { ExecutionStatusBox } from "@/components/execution-status-box";
 import { updateDeclarationTransaction } from "@/app/_actions/declarations";
-
-import {
-  AML_CONTRACT_ADDRESS,
-  USDC_CONTRACT_ADDRESS,
-  CHAIN_ID,
-} from "@/lib/constants";
-
-const AML_ABI = [
-  "function transferTokens(address signer, address to, uint256 amount, uint256 nonce, bytes signature) external",
-];
-
-const ERC20_ABI = [
-  "function approve(address spender, uint256 amount) external returns (bool)",
-  "function allowance(address owner, address spender) external view returns (uint256)",
-];
+import { executeTransfer } from "@/lib/blockchain/execute-transfer";
+import { copyAllParameters, getEtherscanUrl } from "@/lib/blockchain/helpers";
+import { useTransactionStatus } from "@/lib/hooks/use-transaction-status";
+import { ethers } from "ethers";
 
 interface Declaration {
   _id: string;
@@ -46,235 +37,70 @@ export function DeclarationClient({ declaration }: Props) {
   const router = useRouter();
   const [executing, setExecuting] = useState(false);
   const [copied, setCopied] = useState(false);
-  const [txStatus, setTxStatus] = useState<
-    "pending" | "executed" | "failed" | null
-  >(declaration.status === "pending" && declaration.txHash ? "pending" : null);
+  const [executionError, setExecutionError] = useState<string | null>(null);
 
-  // Poll transaction status if there's a pending tx
-  useEffect(() => {
-    if (!declaration.txHash || declaration.status !== "pending") return;
+  // Use custom hook for transaction status polling
+  const txStatus = useTransactionStatus({
+    declarationId: declaration._id,
+    txHash: declaration.txHash,
+    status: declaration.status,
+  });
 
-    const checkTxStatus = async () => {
-      if (!window.ethereum) return;
+  // Execute transfer handler
+  const handleExecuteTransfer = async () => {
+    setExecuting(true);
+    setExecutionError(null);
 
-      try {
-        const provider = new ethers.BrowserProvider(window.ethereum);
-        const receipt = await provider.getTransactionReceipt(
-          declaration.txHash!
-        );
+    const result = await executeTransfer(declaration);
 
-        if (receipt) {
-          const newStatus = receipt.status === 1 ? "executed" : "failed";
-          await updateDeclarationTransaction(
-            declaration._id,
-            declaration.txHash!,
-            newStatus
-          );
-          setTxStatus(newStatus);
+    if (result.success && result.txHash) {
+      await updateDeclarationTransaction(declaration._id, result.txHash);
 
-          if (newStatus === "executed") {
-            toast.success("Transaction confirmed!");
-          } else {
-            toast.error("Transaction failed!");
-          }
+      const provider = new ethers.BrowserProvider(window.ethereum!);
+      const receipt = await provider.getTransaction(result.txHash);
+      await receipt?.wait();
 
-          router.refresh();
-        }
-      } catch (error) {
-        console.error("Error checking tx status:", error);
-      }
-    };
+      const txReceipt = await provider.getTransactionReceipt(result.txHash);
+      const status = txReceipt?.status === 1 ? "executed" : "failed";
 
-    checkTxStatus();
-
-    const interval = setInterval(checkTxStatus, 5000);
-
-    return () => clearInterval(interval);
-  }, [declaration.txHash, declaration.status, declaration._id, router]);
-
-  const executeTransfer = async () => {
-    if (!window.ethereum) return;
-
-    let approveToast: string | number | undefined;
-    let waitApproveToast: string | number | undefined;
-    let transferToast: string | number | undefined;
-    let waitToast: string | number | undefined;
-
-    try {
-      setExecuting(true);
-      const provider = new ethers.BrowserProvider(window.ethereum);
-      const signer = await provider.getSigner();
-
-      // Check network
-      const network = await provider.getNetwork();
-      const chainId = Number(network.chainId);
-      if (chainId !== CHAIN_ID) {
-        toast.error(`Wrong network. Please switch to Chain ID ${CHAIN_ID}`);
-        return;
-      }
-
-      // Validate contract addresses
-      if (!USDC_CONTRACT_ADDRESS || !AML_CONTRACT_ADDRESS) {
-        toast.error("Contract addresses not configured");
-        return;
-      }
-
-      // Check USDC allowance and approve if needed
-      const usdcContract = new ethers.Contract(
-        USDC_CONTRACT_ADDRESS,
-        ERC20_ABI,
-        signer
+      await updateDeclarationTransaction(
+        declaration._id,
+        result.txHash,
+        status
       );
 
-      const allowance = await usdcContract.allowance(
-        declaration.owner,
-        AML_CONTRACT_ADDRESS
-      );
-
-      // Only approve if allowance is insufficient
-      if (allowance < BigInt(declaration.value)) {
-        approveToast = toast.loading("Approving USDC (one-time setup)...");
-
-        // Approve max uint256 for unlimited allowance
-        const MAX_UINT256 =
-          "0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff";
-        const approveTx = await usdcContract.approve(
-          AML_CONTRACT_ADDRESS,
-          MAX_UINT256
-        );
-
-        toast.dismiss(approveToast);
-        waitApproveToast = toast.loading(
-          "Waiting for approval confirmation..."
-        );
-        await approveTx.wait();
-
-        toast.dismiss(waitApproveToast);
-        waitApproveToast = undefined;
-        toast.success("USDC approved!", {
-          duration: 3000,
-        });
-      }
-
-      // Execute the transfer
-      const contract = new ethers.Contract(
-        AML_CONTRACT_ADDRESS,
-        AML_ABI,
-        signer
-      );
-
-      transferToast = toast.loading("Executing transfer...");
-
-      // Log transaction details for MetaMask preview
-      console.log("🔐 Executing transferTokens() with:");
-      console.log(
-        "├─ Function: transferTokens(address,address,uint256,uint256,bytes)"
-      );
-      console.log(`├─ signer: ${declaration.owner}`);
-      console.log(`├─ to: ${declaration.to} (must match EIP-712 vault)`);
-      console.log(
-        `├─ amount: ${(parseFloat(declaration.value) / 1000000).toFixed(
-          2
-        )} USDC (${declaration.value} wei)`
-      );
-      console.log(`├─ nonce: ${declaration.nonce}`);
-      console.log(`└─ signature: ${declaration.signature.slice(0, 20)}...`);
-      console.log("🔒 Contract will verify all params match EIP-712 signature");
-
-      const tx = await contract.transferTokens(
-        declaration.owner,
-        declaration.to,
-        declaration.value,
-        declaration.nonce,
-        declaration.signature
-      );
-
-      const txHash = tx.hash;
-      toast.dismiss(transferToast);
-      transferToast = undefined;
-
-      await updateDeclarationTransaction(declaration._id, txHash);
-      setTxStatus("pending");
-
-      waitToast = toast.loading(
-        `Transaction sent! Hash: ${txHash.slice(0, 10)}...`
-      );
-
-      const receipt = await tx.wait();
-
-      toast.dismiss(waitToast);
-      waitToast = undefined;
-
-      if (receipt.status === 1) {
-        await updateDeclarationTransaction(declaration._id, txHash, "executed");
-        setTxStatus("executed");
+      if (status === "executed") {
         toast.success("Transfer executed successfully!", { duration: 3000 });
       } else {
-        await updateDeclarationTransaction(declaration._id, txHash, "failed");
-        setTxStatus("failed");
         toast.error("Transaction failed!");
+        setExecutionError("Transaction failed on-chain");
       }
 
-      // Reload page to refresh status
       router.refresh();
-    } catch (error: unknown) {
-      console.error("Error executing transfer:", error);
-      const message =
-        error instanceof Error ? error.message : "Failed to execute transfer";
-      toast.error(message);
-    } finally {
-      // Dismiss all loading toasts if still active
-      if (approveToast) toast.dismiss(approveToast);
-      if (waitApproveToast) toast.dismiss(waitApproveToast);
-      if (transferToast) toast.dismiss(transferToast);
-      if (waitToast) toast.dismiss(waitToast);
-      setExecuting(false);
+    } else if (result.error) {
+      toast.error(result.error);
+      setExecutionError(result.error);
     }
+
+    setExecuting(false);
   };
 
-  const openEtherscan = () => {
-    const etherscanBase =
-      CHAIN_ID === 1
-        ? "https://etherscan.io"
-        : CHAIN_ID === 31337
-        ? "http://localhost:8545" // Hardhat local - direct RPC
-        : "https://sepolia.etherscan.io";
-
-    const etherscanUrl = `${etherscanBase}/address/${AML_CONTRACT_ADDRESS}#writeContract#F3`;
-    window.open(etherscanUrl, "_blank");
-  };
-
-  const copyAllParams = () => {
-    const text = `signer: ${declaration.owner}
-to: ${declaration.to}
-amount: ${declaration.value}
-nonce: ${declaration.nonce}
-signature: ${declaration.signature}`;
-
+  // Copy all parameters
+  const handleCopyAll = () => {
+    const text = copyAllParameters(declaration);
     navigator.clipboard.writeText(text);
     setCopied(true);
     toast.success("All parameters copied!");
     setTimeout(() => setCopied(false), 2000);
   };
 
-  const copyParam = (value: string, name: string) => {
-    navigator.clipboard.writeText(value);
-    toast.success(`${name} copied!`);
+  // Open Etherscan
+  const handleOpenEtherscan = () => {
+    window.open(getEtherscanUrl(), "_blank");
   };
 
   return (
     <>
-      <div className="flex justify-start mb-4">
-        <Button
-          variant="outline"
-          onClick={() => router.push("/declarations")}
-          className="gap-2"
-        >
-          <ArrowLeft className="h-4 w-4" />
-          Back
-        </Button>
-      </div>
-
       <Card className="border-border shadow-2xl gap-0">
         <CardHeader className="space-y-3 pb-4">
           <div className="flex items-center justify-between">
@@ -289,6 +115,13 @@ signature: ${declaration.signature}`;
         </CardHeader>
 
         <CardContent className="space-y-4">
+          {/* Execution Status Box */}
+          <ExecutionStatusBox
+            status={declaration.status as "pending" | "executed" | "failed"}
+            txHash={declaration.txHash || undefined}
+            executionError={executionError}
+          />
+
           {/* Contract Call Parameters */}
           <div className="space-y-3">
             <div className="flex items-center justify-between">
@@ -298,7 +131,7 @@ signature: ${declaration.signature}`;
               <Button
                 variant="outline"
                 size="sm"
-                onClick={copyAllParams}
+                onClick={handleCopyAll}
                 className="gap-2"
               >
                 {copied ? (
@@ -325,105 +158,31 @@ signature: ${declaration.signature}`;
 
             {/* Parameters Display */}
             <div className="space-y-2">
-              {/* Signer */}
-              <div className="flex items-center gap-2 p-3 bg-muted/50 rounded-md">
-                <div className="flex-1 min-w-0">
-                  <p className="text-xs text-muted-foreground mb-1">
-                    signer (address)
-                  </p>
-                  <p className="font-mono text-xs break-all">
-                    {declaration.owner}
-                  </p>
-                </div>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => copyParam(declaration.owner, "Signer")}
-                  className="shrink-0"
-                >
-                  <Copy className="h-4 w-4" />
-                </Button>
-              </div>
-
-              {/* To */}
-              <div className="flex items-center gap-2 p-3 bg-muted/50 rounded-md">
-                <div className="flex-1 min-w-0">
-                  <p className="text-xs text-muted-foreground mb-1">
-                    to (address)
-                  </p>
-                  <p className="font-mono text-xs break-all">
-                    {declaration.to}
-                  </p>
-                </div>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => copyParam(declaration.to, "To")}
-                  className="shrink-0"
-                >
-                  <Copy className="h-4 w-4" />
-                </Button>
-              </div>
-
-              {/* Amount */}
-              <div className="flex items-center gap-2 p-3 bg-muted/50 rounded-md">
-                <div className="flex-1 min-w-0">
-                  <p className="text-xs text-muted-foreground mb-1">
-                    amount (uint256)
-                  </p>
-                  <p className="font-mono text-xs break-all">
-                    {declaration.value}
-                  </p>
-                </div>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => copyParam(declaration.value, "Amount")}
-                  className="shrink-0"
-                >
-                  <Copy className="h-4 w-4" />
-                </Button>
-              </div>
-
-              {/* Nonce */}
-              <div className="flex items-center gap-2 p-3 bg-muted/50 rounded-md">
-                <div className="flex-1 min-w-0">
-                  <p className="text-xs text-muted-foreground mb-1">
-                    nonce (uint256)
-                  </p>
-                  <p className="font-mono text-xs break-all">
-                    {declaration.nonce}
-                  </p>
-                </div>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => copyParam(declaration.nonce, "Nonce")}
-                  className="shrink-0"
-                >
-                  <Copy className="h-4 w-4" />
-                </Button>
-              </div>
-
-              {/* Signature */}
-              <div className="flex items-center gap-2 p-3 bg-muted/50 rounded-md">
-                <div className="flex-1 min-w-0">
-                  <p className="text-xs text-muted-foreground mb-1">
-                    signature (bytes)
-                  </p>
-                  <p className="font-mono text-xs break-all">
-                    {declaration.signature}
-                  </p>
-                </div>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => copyParam(declaration.signature, "Signature")}
-                  className="shrink-0"
-                >
-                  <Copy className="h-4 w-4" />
-                </Button>
-              </div>
+              <DeclarationParameter
+                label="signer"
+                type="address"
+                value={declaration.owner}
+              />
+              <DeclarationParameter
+                label="to"
+                type="address"
+                value={declaration.to}
+              />
+              <DeclarationParameter
+                label="amount"
+                type="uint256"
+                value={declaration.value}
+              />
+              <DeclarationParameter
+                label="nonce"
+                type="uint256"
+                value={declaration.nonce}
+              />
+              <DeclarationParameter
+                label="signature"
+                type="bytes"
+                value={declaration.signature}
+              />
             </div>
 
             <p className="text-xs text-yellow-500 italic flex items-start gap-1">
@@ -439,42 +198,10 @@ signature: ${declaration.signature}`;
           {declaration.txHash && (
             <>
               <Separator />
-              <div className="space-y-2">
-                <h3 className="text-sm font-semibold flex items-center gap-2">
-                  Transaction Hash
-                  {txStatus === "pending" && (
-                    <span className="text-xs text-amber-600">
-                      ⏳ Confirming...
-                    </span>
-                  )}
-                </h3>
-                <div className="flex items-center gap-2 p-3 bg-muted/50 rounded-md">
-                  <div className="flex-1 min-w-0">
-                    <p className="font-mono text-xs break-all">
-                      {declaration.txHash}
-                    </p>
-                    <a
-                      href={`http://localhost:8545/tx/${declaration.txHash}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-xs text-blue-500 hover:underline mt-1 inline-flex items-center gap-1"
-                    >
-                      View on Explorer
-                      <ExternalLink className="h-3 w-3" />
-                    </a>
-                  </div>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() =>
-                      copyParam(declaration.txHash!, "Transaction Hash")
-                    }
-                    className="shrink-0"
-                  >
-                    <Copy className="h-4 w-4" />
-                  </Button>
-                </div>
-              </div>
+              <TransactionStatus
+                txHash={declaration.txHash}
+                status={txStatus}
+              />
             </>
           )}
 
@@ -483,7 +210,7 @@ signature: ${declaration.signature}`;
           {/* Action Buttons */}
           <div className="space-y-2">
             <Button
-              onClick={executeTransfer}
+              onClick={handleExecuteTransfer}
               disabled={executing}
               className="w-full h-12 gap-2"
               size="lg"
@@ -493,7 +220,7 @@ signature: ${declaration.signature}`;
             </Button>
 
             <Button
-              onClick={openEtherscan}
+              onClick={handleOpenEtherscan}
               variant="outline"
               className="w-full h-12 gap-2"
               size="lg"
