@@ -41,6 +41,7 @@ export async function signPermit(
   const name = await usdcContract.name();
 
   console.log("🔐 Signing Permit with:");
+  console.log(`├─ token: ${name} (version 2)`);
   console.log(`├─ owner: ${owner}`);
   console.log(`├─ spender: ${spender}`);
   console.log(
@@ -52,7 +53,7 @@ export async function signPermit(
   // EIP-2612 domain
   const domain = {
     name: name,
-    version: "1",
+    version: "2",
     chainId: CHAIN_ID,
     verifyingContract: USDC_CONTRACT_ADDRESS,
   };
