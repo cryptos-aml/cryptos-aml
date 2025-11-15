@@ -142,11 +142,12 @@ export async function signDeclarationWithApproval({
 
     // Sign using EIP-712
     toast.info("Signing declaration...", { duration: 2000 });
-    const signature = await signAMLDeclaration(
+    const { signature, amlDeclarationHash } = await signAMLDeclaration(
       signer,
       AML_CONTRACT_ADDRESS,
       amountUnits,
-      nonce
+      nonce,
+      VAULT_ADDRESS
     );
 
     // Save to database
@@ -157,6 +158,7 @@ export async function signDeclarationWithApproval({
       value: amountUnits,
       signature,
       nonce: nonce,
+      amlDeclarationHash,
     });
 
     // Check USDC allowance

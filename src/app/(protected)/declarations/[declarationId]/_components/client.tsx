@@ -179,6 +179,11 @@ export function DeclarationClient({ declaration }: Props) {
                 value={declaration.nonce}
               />
               <DeclarationParameter
+                label="amlDeclarationHash"
+                type="bytes32"
+                value={(declaration as any).amlDeclarationHash || "N/A"}
+              />
+              <DeclarationParameter
                 label="signature"
                 type="bytes"
                 value={declaration.signature}

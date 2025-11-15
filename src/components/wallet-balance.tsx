@@ -144,7 +144,7 @@ export function WalletBalance() {
   };
 
   return (
-    <Card className="p-3 bg-gradient-to-br from-background to-muted/20 border-border gap-2">
+    <Card className="p-3 bg-linear-to-br from-background to-muted/20 border-border gap-2">
       <div className="flex items-center justify-between mb-2">
         <div className="flex items-center gap-2">
           <Wallet className="h-4 w-4 text-muted-foreground" />

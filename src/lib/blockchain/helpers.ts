@@ -10,6 +10,7 @@ interface Declaration {
   value: string;
   nonce: string;
   signature: string;
+  amlDeclarationHash?: string;
 }
 
 /**
@@ -20,6 +21,7 @@ export function copyAllParameters(declaration: Declaration): string {
 to: ${declaration.to}
 amount: ${declaration.value}
 nonce: ${declaration.nonce}
+amlDeclarationHash: ${declaration.amlDeclarationHash || "N/A"}
 signature: ${declaration.signature}`;
 }
 

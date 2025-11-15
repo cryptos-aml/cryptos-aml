@@ -49,6 +49,7 @@ export interface ContractCallParams {
   to: string;
   amount: string;
   nonce: string;
+  amlDeclarationHash: string;
   signature: string;
 }
 
@@ -81,6 +82,11 @@ export const AML_CHAIN_ABI = [
         internalType: "uint256",
         name: "nonce",
         type: "uint256",
+      },
+      {
+        internalType: "bytes32",
+        name: "amlDeclarationHash",
+        type: "bytes32",
       },
       {
         internalType: "bytes",
@@ -128,6 +134,7 @@ export async function executeTransferTokens(
     params.to,
     params.amount,
     params.nonce,
+    params.amlDeclarationHash,
     params.signature
   );
 

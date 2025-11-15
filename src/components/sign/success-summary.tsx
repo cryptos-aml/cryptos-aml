@@ -80,7 +80,7 @@ export function SuccessSummary({
               Approval Cancelled
             </h3>
           </div>
-          <p className="text-sm text-muted-foreground break-words">
+          <p className="text-sm text-muted-foreground wrap-break-words">
             {approvalError || "You cancelled the USDC approval."}
           </p>
           <p className="text-xs text-muted-foreground">
@@ -98,7 +98,7 @@ export function SuccessSummary({
               Approval Failed
             </h3>
           </div>
-          <p className="text-sm text-muted-foreground break-words">
+          <p className="text-sm text-muted-foreground wrap-break-word">
             {approvalError || "Failed to approve USDC spending."}
           </p>
           <p className="text-xs text-muted-foreground">

@@ -35,18 +35,20 @@ export const EIP712_TYPES = {
  * @param contractAddress AML contract address
  * @param amount USDC amount in wei (e.g., 1000000 = 1 USDC)
  * @param nonce Nonce (timestamp)
- * @returns EIP-712 signature
+ * @param vaultAddress Destination address for funds
+ * @returns { signature: string, amlDeclarationHash: string }
  */
 export async function signAMLDeclaration(
   signer: ethers.Signer,
   contractAddress: string,
   amount: string,
-  nonce: string
-): Promise<string> {
+  nonce: string,
+  vaultAddress: string
+): Promise<{ signature: string; amlDeclarationHash: string }> {
   // Build EIP-712 message with full text (will display in MetaMask!)
   const message = {
     amlDeclaration: AML_DECLARATION_TEXT,
-    vault: VAULT_ADDRESS,
+    vault: vaultAddress,
     amount: amount,
     nonce: nonce,
   };
@@ -56,7 +58,12 @@ export async function signAMLDeclaration(
   // Sign using EIP-712
   const signature = await signer.signTypedData(domain, EIP712_TYPES, message);
 
-  return signature;
+  // Calculate hash of AML declaration for smart contract
+  const amlDeclarationHash = ethers.keccak256(
+    ethers.toUtf8Bytes(AML_DECLARATION_TEXT)
+  );
+
+  return { signature, amlDeclarationHash };
 }
 
 /**

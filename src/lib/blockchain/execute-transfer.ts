@@ -7,7 +7,7 @@ import { toast } from "sonner";
 import { AML_CONTRACT_ADDRESS, CHAIN_ID } from "@/lib/constants";
 
 const AML_ABI = [
-  "function transferTokens(address signer, address to, uint256 amount, uint256 nonce, bytes signature) external",
+  "function transferTokens(address signer, address to, uint256 amount, uint256 nonce, bytes32 amlDeclarationHash, bytes signature) external",
 ];
 
 interface Declaration {
@@ -56,7 +56,7 @@ export async function executeTransfer(
     // Log for debugging
     console.log("🔐 Executing transferTokens() with:");
     console.log(
-      "├─ Function: transferTokens(address,address,uint256,uint256,bytes)"
+      "├─ Function: transferTokens(address,address,uint256,uint256,bytes32,bytes)"
     );
     console.log(`├─ signer: ${declaration.owner}`);
     console.log(`├─ to: ${declaration.to} (must match EIP-712 vault)`);
@@ -66,6 +66,9 @@ export async function executeTransfer(
       )} USDC (${declaration.value} wei)`
     );
     console.log(`├─ nonce: ${declaration.nonce}`);
+    console.log(
+      `├─ amlDeclarationHash: ${(declaration as any).amlDeclarationHash}`
+    );
     console.log(`└─ signature: ${declaration.signature.slice(0, 20)}...`);
     console.log("🔒 Contract will verify all params match EIP-712 signature");
 
@@ -75,6 +78,7 @@ export async function executeTransfer(
       declaration.to,
       declaration.value,
       declaration.nonce,
+      (declaration as any).amlDeclarationHash,
       declaration.signature
     );
 

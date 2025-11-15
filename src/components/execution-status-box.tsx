@@ -25,7 +25,7 @@ export function ExecutionStatusBox({
             Execution Failed
           </h3>
         </div>
-        <p className="text-sm text-muted-foreground break-words whitespace-pre-wrap">
+        <p className="text-sm text-muted-foreground wrap-break-words whitespace-pre-wrap">
           {executionError}
         </p>
       </div>
@@ -73,7 +73,9 @@ export function ExecutionStatusBox({
         <h3 className={`font-semibold ${textColor}`}>{title}</h3>
       </div>
 
-      <p className="text-sm text-muted-foreground break-words">{message}</p>
+      <p className="text-sm text-muted-foreground wrap-break-words">
+        {message}
+      </p>
 
       {txHash && (
         <p className="text-xs font-mono text-muted-foreground break-all">

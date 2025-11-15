@@ -37,6 +37,7 @@ export interface CreateDeclarationRequest {
   value: string;
   signature: string;
   nonce: string;
+  amlDeclarationHash: string;
   deadline?: number; // Optional for V2
 }
 

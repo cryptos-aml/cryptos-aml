@@ -15,10 +15,10 @@ import type {
 export async function createDeclaration(
   data: CreateDeclarationRequest
 ): Promise<CreateDeclarationResponse> {
-  const { owner, to, value, signature, nonce, deadline } = data;
+  const { owner, to, value, signature, nonce, amlDeclarationHash, deadline } = data;
 
   // Validate required fields (deadline is optional for V2)
-  if (!owner || !to || !value || !signature || !nonce) {
+  if (!owner || !to || !value || !signature || !nonce || !amlDeclarationHash) {
     throw new Error("Missing required fields");
   }
 
@@ -74,6 +74,7 @@ export async function createDeclaration(
     payloadHash,
     signature,
     nonce,
+    amlDeclarationHash,
     deadline,
     status: "pending",
   });

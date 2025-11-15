@@ -81,6 +81,10 @@ const declarationSchema = new mongoose.Schema({
     unique: true,
     index: true,
   },
+  amlDeclarationHash: {
+    type: String,
+    required: true,
+  },
   deadline: {
     type: Number,
     required: false,

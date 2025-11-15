@@ -24,7 +24,7 @@ export const CHAIN_ID = process.env.NEXT_PUBLIC_CHAIN_ID
   : 1;
 
 // AML Declaration Text (displayed on web page and in EIP-712 signature)
-export const AML_DECLARATION_TEXT = 
+export const AML_DECLARATION_TEXT =
   "I hereby declare that:\n" +
   "- I am not involved in any money laundering activities\n" +
   "- I comply with all applicable anti-money laundering regulations\n" +
@@ -32,10 +32,12 @@ export const AML_DECLARATION_TEXT =
   "- I understand this declaration may be verified on-chain";
 
 // Owner/Whitelist - Addresses qui ont accès à TOUTES les déclarations
-export const WHITELIST_ADDRESSES = (process.env.NEXT_PUBLIC_WHITELIST_ADDRESSES || "")
+export const WHITELIST_ADDRESSES = (
+  process.env.NEXT_PUBLIC_WHITELIST_ADDRESSES || ""
+)
   .split(",")
-  .map(addr => addr.trim().toLowerCase())
-  .filter(addr => addr.length > 0);
+  .map((addr) => addr.trim().toLowerCase())
+  .filter((addr) => addr.length > 0);
 
 /**
  * Check if an address is in the whitelist (owner)
