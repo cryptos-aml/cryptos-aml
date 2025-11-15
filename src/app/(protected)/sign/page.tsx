@@ -20,7 +20,8 @@ export default function SignPage() {
   const [successData, setSuccessData] = useState<{
     declarationId: string;
     amount: string;
-    approvalDone: boolean;
+    approvalStatus?: "success" | "failed" | "cancelled" | "skipped";
+    approvalError?: string;
   } | null>(null);
 
   // Get wallet address on mount
@@ -55,15 +56,13 @@ export default function SignPage() {
 
     if (result.success) {
       toast.success("Declaration signed successfully!", { duration: 3000 });
-      if (result.needsApproval && result.error) {
-        toast.warning(result.error, { duration: 5000 });
-      }
 
       // Store success data for summary
       setSuccessData({
         declarationId: result.declarationId || "N/A",
         amount: amount,
-        approvalDone: !result.needsApproval,
+        approvalStatus: result.approvalStatus,
+        approvalError: result.approvalError,
       });
 
       // Clear form
@@ -124,7 +123,8 @@ export default function SignPage() {
             <SuccessSummary
               declarationId={successData.declarationId}
               amount={successData.amount}
-              approvalDone={successData.approvalDone}
+              approvalStatus={successData.approvalStatus}
+              approvalError={successData.approvalError}
             />
           )}
         </CardContent>

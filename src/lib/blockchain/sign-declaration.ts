@@ -63,7 +63,7 @@ async function checkAllowance(
 async function approveUsdc(
   provider: ethers.BrowserProvider,
   amount: string
-): Promise<boolean> {
+): Promise<{ success: boolean; error?: string; cancelled?: boolean }> {
   const erc20Abi = [
     "function approve(address spender, uint256 amount) external returns (bool)",
   ];
@@ -84,13 +84,29 @@ async function approveUsdc(
 
     toast.success("USDC approved successfully!", { duration: 3000 });
 
-    return true;
+    return { success: true };
   } catch (error) {
     console.error("Approval error:", error);
     const message =
       error instanceof Error ? error.message : "Failed to approve USDC";
-    toast.error(message);
-    return false;
+
+    // Check if user cancelled
+    const cancelled =
+      message.includes("user rejected") ||
+      message.includes("User denied") ||
+      message.includes("rejected");
+
+    if (cancelled) {
+      toast.warning("Approval cancelled by user", { duration: 3000 });
+      return {
+        success: false,
+        error: "User cancelled approval",
+        cancelled: true,
+      };
+    }
+
+    toast.error(`Approval failed: ${message}`, { duration: 4000 });
+    return { success: false, error: message, cancelled: false };
   }
 }
 
@@ -154,24 +170,35 @@ export async function signDeclarationWithApproval({
       toast.info("Approval needed to spend USDC", { duration: 2000 });
 
       // Auto-approve
-      const approved = await approveUsdc(provider, amountUnits);
+      const approvalResult = await approveUsdc(provider, amountUnits);
 
-      if (!approved) {
+      if (!approvalResult.success) {
+        const approvalStatus = approvalResult.cancelled
+          ? "cancelled"
+          : "failed";
         return {
           success: true,
           declarationId: data.id,
           needsApproval: true,
           requiredAllowance: amountUnits,
-          error:
-            "Declaration signed but approval failed. You can approve later.",
+          approvalStatus,
+          approvalError: approvalResult.error,
         };
       }
+
+      return {
+        success: true,
+        declarationId: data.id,
+        needsApproval: false,
+        approvalStatus: "success",
+      };
     }
 
     return {
       success: true,
       declarationId: data.id,
       needsApproval: false,
+      approvalStatus: "skipped",
     };
   } catch (error: unknown) {
     console.error("Sign declaration error:", error);
