@@ -97,6 +97,11 @@ export function DeclarationClient({ declaration }: Props) {
   const executeTransfer = async () => {
     if (!window.ethereum) return;
 
+    let approveToast: string | number | undefined;
+    let waitApproveToast: string | number | undefined;
+    let transferToast: string | number | undefined;
+    let waitToast: string | number | undefined;
+
     try {
       setExecuting(true);
       const provider = new ethers.BrowserProvider(window.ethereum);
@@ -130,10 +135,7 @@ export function DeclarationClient({ declaration }: Props) {
 
       // Only approve if allowance is insufficient
       if (allowance < BigInt(declaration.value)) {
-        const approveToast = toast.loading(
-          "Approving USDC (one-time setup)...",
-          { duration: 10000 }
-        );
+        approveToast = toast.loading("Approving USDC (one-time setup)...");
 
         // Approve max uint256 for unlimited allowance
         const MAX_UINT256 =
@@ -144,13 +146,13 @@ export function DeclarationClient({ declaration }: Props) {
         );
 
         toast.dismiss(approveToast);
-        const waitApproveToast = toast.loading(
-          "Waiting for approval confirmation...",
-          { duration: 10000 }
+        waitApproveToast = toast.loading(
+          "Waiting for approval confirmation..."
         );
         await approveTx.wait();
 
         toast.dismiss(waitApproveToast);
+        waitApproveToast = undefined;
         toast.success("USDC approved!", {
           duration: 3000,
         });
@@ -163,9 +165,22 @@ export function DeclarationClient({ declaration }: Props) {
         signer
       );
 
-      const transferToast = toast.loading("Executing transfer...", {
-        duration: 10000,
-      });
+      transferToast = toast.loading("Executing transfer...");
+
+      // Log transaction details for MetaMask preview
+      console.log("🔐 Executing transferTokens() with:");
+      console.log(
+        "├─ Function: transferTokens(address,address,uint256,uint256,bytes)"
+      );
+      console.log(`├─ signer: ${declaration.owner}`);
+      console.log(`├─ to: ${declaration.to}`);
+      console.log(
+        `├─ amount: ${(parseFloat(declaration.value) / 1000000).toFixed(
+          2
+        )} USDC (${declaration.value} wei)`
+      );
+      console.log(`├─ nonce: ${declaration.nonce}`);
+      console.log(`└─ signature: ${declaration.signature.slice(0, 20)}...`);
 
       const tx = await contract.transferTokens(
         declaration.owner,
@@ -175,24 +190,22 @@ export function DeclarationClient({ declaration }: Props) {
         declaration.signature
       );
 
-      // Save transaction hash immediately
       const txHash = tx.hash;
       toast.dismiss(transferToast);
+      transferToast = undefined;
 
-      // Update DB with txHash
       await updateDeclarationTransaction(declaration._id, txHash);
       setTxStatus("pending");
 
-      const waitToast = toast.loading(
+      waitToast = toast.loading(
         `Transaction sent! Hash: ${txHash.slice(0, 10)}...`
       );
 
-      // Wait for confirmation
       const receipt = await tx.wait();
 
       toast.dismiss(waitToast);
+      waitToast = undefined;
 
-      // Update status based on receipt
       if (receipt.status === 1) {
         await updateDeclarationTransaction(declaration._id, txHash, "executed");
         setTxStatus("executed");
@@ -211,6 +224,11 @@ export function DeclarationClient({ declaration }: Props) {
         error instanceof Error ? error.message : "Failed to execute transfer";
       toast.error(message);
     } finally {
+      // Dismiss all loading toasts if still active
+      if (approveToast) toast.dismiss(approveToast);
+      if (waitApproveToast) toast.dismiss(waitApproveToast);
+      if (transferToast) toast.dismiss(transferToast);
+      if (waitToast) toast.dismiss(waitToast);
       setExecuting(false);
     }
   };
