@@ -83,7 +83,8 @@ const declarationSchema = new mongoose.Schema({
   },
   deadline: {
     type: Number,
-    required: true,
+    required: false,
+    default: null,
   },
   status: {
     type: String,

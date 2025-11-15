@@ -5,8 +5,9 @@ import { useRouter } from "next/navigation";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { PenIcon, ChevronRight } from "lucide-react";
-import { getDeclarationsByWallet } from "../../_actions/declarations";
+import { getAllDeclarations } from "../../_actions/declarations";
 import { StatusBadge } from "@/components/status-badge";
+import { isWhitelisted } from "@/lib/constants";
 
 interface Declaration {
   _id: string;
@@ -28,6 +29,8 @@ export default function DeclarationsPage() {
   const [declarations, setDeclarations] = useState<Declaration[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [isOwner, setIsOwner] = useState(false);
+  const [statusFilter, setStatusFilter] = useState<string>("all");
 
   useEffect(() => {
     const init = async () => {
@@ -41,9 +44,13 @@ export default function DeclarationsPage() {
             const wallet = accounts[0];
             setWalletAddress(wallet);
 
-            // Fetch declarations
+            // Check if whitelisted
+            const whitelisted = isWhitelisted(wallet);
+            setIsOwner(whitelisted);
+
+            // Fetch ALL declarations if whitelisted
             try {
-              const data = await getDeclarationsByWallet(wallet);
+              const data = await getAllDeclarations();
               setDeclarations(data as Declaration[]);
             } catch (err) {
               console.error("Error fetching declarations:", err);
@@ -60,6 +67,26 @@ export default function DeclarationsPage() {
 
     init();
   }, []);
+
+  // Refetch when status filter changes
+  useEffect(() => {
+    if (!walletAddress) return;
+
+    const fetchFiltered = async () => {
+      setLoading(true);
+      try {
+        const filterValue = statusFilter === "all" ? undefined : statusFilter;
+        const data = await getAllDeclarations(filterValue);
+        setDeclarations(data as Declaration[]);
+      } catch (err) {
+        console.error("Error fetching declarations:", err);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchFiltered();
+  }, [statusFilter, walletAddress]);
 
   const formatDate = (dateString: string) => {
     return new Date(dateString).toLocaleDateString("en-US", {
@@ -85,13 +112,51 @@ export default function DeclarationsPage() {
       </div>
 
       <Card className="border-border shadow-2xl">
-        <CardHeader>
-          <CardTitle>My AML Declarations</CardTitle>
-          {walletAddress && (
-            <p className="text-sm text-muted-foreground font-mono">
-              {walletAddress}
-            </p>
-          )}
+        <CardHeader className="space-y-3">
+          <div className="flex items-center justify-between">
+            <div>
+              <CardTitle className="text-2xl font-bold">
+                {isOwner ? "All Declarations (Owner)" : "Declarations"}
+              </CardTitle>
+              {walletAddress && (
+                <p className="text-sm text-muted-foreground font-mono mt-1">
+                  {walletAddress}
+                </p>
+              )}
+            </div>
+            {isOwner && (
+              <div className="flex gap-2">
+                <Button
+                  variant={statusFilter === "all" ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => setStatusFilter("all")}
+                >
+                  All
+                </Button>
+                <Button
+                  variant={statusFilter === "pending" ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => setStatusFilter("pending")}
+                >
+                  Pending
+                </Button>
+                <Button
+                  variant={statusFilter === "executed" ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => setStatusFilter("executed")}
+                >
+                  Executed
+                </Button>
+                <Button
+                  variant={statusFilter === "failed" ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => setStatusFilter("failed")}
+                >
+                  Failed
+                </Button>
+              </div>
+            )}
+          </div>
         </CardHeader>
         <CardContent>
           {loading ? (
@@ -125,7 +190,8 @@ export default function DeclarationsPage() {
                           </p>
                           {decl.txHash && (
                             <p className="text-xs text-blue-500 font-mono mt-1">
-                              {decl.txHash.slice(0, 10)}...{decl.txHash.slice(-8)}
+                              {decl.txHash.slice(0, 10)}...
+                              {decl.txHash.slice(-8)}
                             </p>
                           )}
                         </div>
@@ -135,7 +201,8 @@ export default function DeclarationsPage() {
                       {/* Right: Signature & Arrow */}
                       <div className="flex items-center gap-3">
                         <p className="font-mono text-xs text-muted-foreground">
-                          {decl.signature.slice(0, 10)}...{decl.signature.slice(-8)}
+                          {decl.signature.slice(0, 10)}...
+                          {decl.signature.slice(-8)}
                         </p>
                         <ChevronRight className="h-5 w-5 text-muted-foreground" />
                       </div>

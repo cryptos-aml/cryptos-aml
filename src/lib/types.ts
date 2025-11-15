@@ -29,7 +29,7 @@ export interface DeclarationMessage {
 
 /**
  * Request body for creating a new declaration (client-side)
- * Compatible with amlChain contract format
+ * Compatible with AMLChainV2 contract format (EIP-712)
  */
 export interface CreateDeclarationRequest {
   owner: string;
@@ -37,7 +37,7 @@ export interface CreateDeclarationRequest {
   value: string;
   signature: string;
   nonce: string;
-  deadline: number;
+  deadline?: number; // Optional for V2
 }
 
 /**

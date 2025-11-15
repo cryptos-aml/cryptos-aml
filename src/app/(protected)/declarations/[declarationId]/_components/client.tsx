@@ -17,12 +17,10 @@ import {
   CHAIN_ID,
 } from "@/lib/constants";
 
-// ABI minimal pour transferTokens
 const AML_ABI = [
   "function transferTokens(address signer, address to, uint256 amount, uint256 nonce, bytes signature) external",
 ];
 
-// ABI minimal pour USDC ERC20
 const ERC20_ABI = [
   "function approve(address spender, uint256 amount) external returns (bool)",
   "function allowance(address owner, address spender) external view returns (uint256)",
@@ -173,7 +171,7 @@ export function DeclarationClient({ declaration }: Props) {
         "├─ Function: transferTokens(address,address,uint256,uint256,bytes)"
       );
       console.log(`├─ signer: ${declaration.owner}`);
-      console.log(`├─ to: ${declaration.to}`);
+      console.log(`├─ to: ${declaration.to} (must match EIP-712 vault)`);
       console.log(
         `├─ amount: ${(parseFloat(declaration.value) / 1000000).toFixed(
           2
@@ -181,6 +179,7 @@ export function DeclarationClient({ declaration }: Props) {
       );
       console.log(`├─ nonce: ${declaration.nonce}`);
       console.log(`└─ signature: ${declaration.signature.slice(0, 20)}...`);
+      console.log("🔒 Contract will verify all params match EIP-712 signature");
 
       const tx = await contract.transferTokens(
         declaration.owner,

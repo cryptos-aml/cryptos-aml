@@ -8,17 +8,17 @@ import type {
 } from "@/lib/types";
 
 /**
- * Server action to create a new AML declaration
- * Accepts: owner, to, value, signature, nonce, deadline
- * Compatible with amlChain contract format
+ * Server action to create a new AML declaration (V2)
+ * Accepts: owner, to, value, signature, nonce (optional deadline)
+ * Compatible with AMLChainV2 contract format (EIP-712)
  */
 export async function createDeclaration(
   data: CreateDeclarationRequest
 ): Promise<CreateDeclarationResponse> {
   const { owner, to, value, signature, nonce, deadline } = data;
 
-  // Validate required fields
-  if (!owner || !to || !value || !signature || !nonce || !deadline) {
+  // Validate required fields (deadline is optional for V2)
+  if (!owner || !to || !value || !signature || !nonce) {
     throw new Error("Missing required fields");
   }
 
@@ -52,8 +52,8 @@ export async function createDeclaration(
     throw new Error("Invalid value format");
   }
 
-  // Calculate payload hash (for tracking purposes)
-  const payloadHash = calculatePayloadHash(owner, value, deadline);
+  // Calculate payload hash (for tracking purposes, use 0 if no deadline)
+  const payloadHash = calculatePayloadHash(owner, value, deadline || 0);
 
   // Connect to database
   await connectDB();
@@ -92,6 +92,21 @@ export async function getDeclarationsByWallet(wallet: string) {
   await connectDB();
 
   const declarations = await Declaration.find({ owner: wallet.toLowerCase() })
+    .sort({ createdAt: -1 })
+    .lean();
+
+  return JSON.parse(JSON.stringify(declarations));
+}
+
+/**
+ * Server action to get ALL declarations (for whitelisted owners only)
+ * @param status Optional status filter ("pending" | "executed" | "failed")
+ */
+export async function getAllDeclarations(status?: string) {
+  await connectDB();
+
+  const query = status ? { status } : {};
+  const declarations = await Declaration.find(query)
     .sort({ createdAt: -1 })
     .lean();
 

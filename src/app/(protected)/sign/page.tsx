@@ -11,18 +11,19 @@ import { Textarea } from "@/components/ui/textarea";
 import { FileText } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { createDeclaration } from "../../_actions/declarations";
-import { AML_DECLARATION_TEXT } from "@/lib/constants";
 import {
-  generateContractMessageHash,
-  signMessageHash,
-} from "@/lib/contract-helpers";
+  AML_DECLARATION_TEXT,
+  AML_CONTRACT_ADDRESS,
+  VAULT_ADDRESS,
+} from "@/lib/constants";
+import { signAMLDeclaration } from "@/lib/eip712";
+import { usdcToUnits } from "@/lib/constants";
 import { WalletBalance } from "@/components/wallet-balance";
 import { toast } from "sonner";
 
 export default function SignPage() {
   const router = useRouter();
   const [walletAddress, setWalletAddress] = useState<string>("");
-  const [destinationAddress, setDestinationAddress] = useState<string>("");
   const [amount, setAmount] = useState<string>("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string>("");
@@ -48,7 +49,7 @@ export default function SignPage() {
   }, []);
 
   const signDeclaration = async () => {
-    if (!walletAddress || !amount || !destinationAddress) {
+    if (!walletAddress || !amount) {
       setError("Please fill in all required fields");
       return;
     }
@@ -56,11 +57,6 @@ export default function SignPage() {
     const amountNum = parseFloat(amount);
     if (isNaN(amountNum) || amountNum <= 0) {
       setError("Please enter a valid amount greater than 0");
-      return;
-    }
-
-    if (!ethers.isAddress(destinationAddress)) {
-      setError("Please enter a valid Ethereum address");
       return;
     }
 
@@ -75,33 +71,28 @@ export default function SignPage() {
       const provider = new ethers.BrowserProvider(window.ethereum);
       const signer = await provider.getSigner();
 
-      // Fetch signing parameters from server
-      const paramsResponse = await fetch(
-        `/api/sign-params?wallet=${walletAddress}&amount=${amount}&to=${destinationAddress}`
+      // Convert amount to USDC units (6 decimals)
+      const amountUnits = usdcToUnits(amount);
+
+      // Generate nonce (timestamp)
+      const nonce = Date.now().toString();
+
+      // Sign using EIP-712
+      const signature = await signAMLDeclaration(
+        signer,
+        AML_CONTRACT_ADDRESS,
+        amountUnits,
+        nonce
       );
-      if (!paramsResponse.ok) {
-        const errorData = await paramsResponse.json();
-        throw new Error(errorData.error || "Failed to get signing parameters");
-      }
-
-      const params = await paramsResponse.json();
-      const { to, amount: amountUnits, nonce, deadline } = params;
-
-      // Generate message hash (as per contract)
-      const messageHash = generateContractMessageHash(to, amountUnits, nonce);
-
-      // Sign the message hash
-      const signature = await signMessageHash(signer, messageHash);
 
       // Save to database
       const loadingToast = toast.loading("Creating declaration...");
       const data = await createDeclaration({
         owner: walletAddress,
-        to,
+        to: VAULT_ADDRESS,
         value: amountUnits,
         signature,
-        nonce,
-        deadline,
+        nonce: nonce, // Same nonce used for signature
       });
 
       // Dismiss loading and show success
@@ -109,10 +100,9 @@ export default function SignPage() {
       toast.success("Declaration created successfully!", {
         duration: 2000,
       });
-      
+
       // Clear form
       setAmount("");
-      setDestinationAddress("");
 
       // Redirect immediately after success
       router.push(`/declarations/${data.id}`);
@@ -187,23 +177,18 @@ export default function SignPage() {
               Enter the amount of USDC to transfer (6 decimals)
             </p>
           </div>
-
-          {/* Destination Address (Editable) */}
+          {/* 
           <div className="space-y-2">
-            <Label htmlFor="destination">Destination Address</Label>
-            <Input
-              id="destination"
-              type="text"
-              placeholder="0x..."
-              value={destinationAddress}
-              onChange={(e) => setDestinationAddress(e.target.value)}
-              disabled={loading}
-              className="font-mono"
-            />
+            <Label>Destination (Vault)</Label>
+            <div className="p-3 bg-muted border border-border rounded-md">
+              <p className="font-mono text-sm break-all">{VAULT_ADDRESS}</p>
+            </div>
             <p className="text-xs text-muted-foreground">
-              Enter the Ethereum address where USDC will be sent
+              All USDC transfers go to the vault address
             </p>
-          </div>
+          </div> */}
+
+          <Separator />
 
           {/* AML Declaration Text */}
           <div className="space-y-2">
@@ -220,9 +205,7 @@ export default function SignPage() {
           {/* Sign Button */}
           <Button
             onClick={signDeclaration}
-            disabled={
-              loading || !walletAddress || !amount || !destinationAddress
-            }
+            disabled={loading || !walletAddress || !amount}
             className="w-full h-12"
             size="lg"
           >
