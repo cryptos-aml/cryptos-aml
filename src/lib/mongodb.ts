@@ -67,10 +67,6 @@ const declarationSchema = new mongoose.Schema({
     type: String,
     required: true,
   },
-  payloadHash: {
-    type: String,
-    required: true,
-  },
   signature: {
     type: String,
     required: true,
@@ -85,10 +81,21 @@ const declarationSchema = new mongoose.Schema({
     type: String,
     required: true,
   },
-  deadline: {
+  permitV: {
     type: Number,
-    required: false,
-    default: null,
+    required: true,
+  },
+  permitR: {
+    type: String,
+    required: true,
+  },
+  permitS: {
+    type: String,
+    required: true,
+  },
+  permitDeadline: {
+    type: Number,
+    required: true,
   },
   status: {
     type: String,

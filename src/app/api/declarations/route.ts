@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
 import { connectDB, Declaration } from "@/lib/mongodb";
-import { calculatePayloadHash } from "@/lib/crypto";
 import type {
   CreateDeclarationRequest,
   CreateDeclarationResponse,
@@ -17,13 +16,36 @@ export async function POST(request: NextRequest) {
     const body: CreateDeclarationRequest = await request.json();
 
     // Validate required fields
-    const { owner, to, value, signature, nonce, deadline } = body;
+    const {
+      owner,
+      to,
+      value,
+      signature,
+      nonce,
+      amlDeclarationHash,
+      permitV,
+      permitR,
+      permitS,
+      permitDeadline,
+    } = body;
 
-    if (!owner || !to || !value || !signature || nonce === undefined || !deadline) {
+    if (
+      !owner ||
+      !to ||
+      !value ||
+      !signature ||
+      !nonce ||
+      !amlDeclarationHash ||
+      permitV === undefined ||
+      !permitR ||
+      !permitS ||
+      !permitDeadline
+    ) {
       return NextResponse.json<ErrorResponse>(
         {
           error: "Missing required fields",
-          details: "owner, to, value, signature, nonce, and deadline are required",
+          details:
+            "owner, to, value, signature, nonce, amlDeclarationHash, permitV, permitR, permitS, permitDeadline are required",
         },
         { status: 400 }
       );
@@ -53,9 +75,6 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Calculate payload hash
-    const payloadHash = calculatePayloadHash(owner, value, deadline);
-
     // Connect to database
     await connectDB();
 
@@ -64,10 +83,13 @@ export async function POST(request: NextRequest) {
       owner: owner.toLowerCase(),
       to: to.toLowerCase(),
       value,
-      payloadHash,
       signature,
       nonce,
-      deadline,
+      amlDeclarationHash,
+      permitV,
+      permitR,
+      permitS,
+      permitDeadline,
       status: "pending",
     });
 
@@ -75,7 +97,6 @@ export async function POST(request: NextRequest) {
     const response: CreateDeclarationResponse = {
       id: declaration._id?.toString() || "",
       status: "pending",
-      payloadHash,
     };
 
     return NextResponse.json(response, { status: 201 });

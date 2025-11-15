@@ -1,7 +1,6 @@
 "use server";
 
 import { connectDB, Declaration } from "@/lib/mongodb";
-import { calculatePayloadHash } from "@/lib/crypto";
 import type {
   CreateDeclarationRequest,
   CreateDeclarationResponse,
@@ -9,16 +8,27 @@ import type {
 
 /**
  * Server action to create a new AML declaration (V2)
- * Accepts: owner, to, value, signature, nonce (optional deadline)
- * Compatible with AMLChainV2 contract format (EIP-712)
+ * With EIP-2612 Permit for gasless approval
  */
 export async function createDeclaration(
   data: CreateDeclarationRequest
 ): Promise<CreateDeclarationResponse> {
-  const { owner, to, value, signature, nonce, amlDeclarationHash, deadline } = data;
+  const { 
+    owner, 
+    to, 
+    value, 
+    signature, 
+    nonce, 
+    amlDeclarationHash, 
+    permitV, 
+    permitR, 
+    permitS, 
+    permitDeadline,
+  } = data;
 
-  // Validate required fields (deadline is optional for V2)
-  if (!owner || !to || !value || !signature || !nonce || !amlDeclarationHash) {
+  // Validate required fields
+  if (!owner || !to || !value || !signature || !nonce || !amlDeclarationHash || 
+      permitV === undefined || !permitR || !permitS || !permitDeadline) {
     throw new Error("Missing required fields");
   }
 
@@ -52,9 +62,6 @@ export async function createDeclaration(
     throw new Error("Invalid value format");
   }
 
-  // Calculate payload hash (for tracking purposes, use 0 if no deadline)
-  const payloadHash = calculatePayloadHash(owner, value, deadline || 0);
-
   // Connect to database
   await connectDB();
 
@@ -71,18 +78,19 @@ export async function createDeclaration(
     owner: owner.toLowerCase(),
     to: to.toLowerCase(),
     value,
-    payloadHash,
     signature,
     nonce,
     amlDeclarationHash,
-    deadline,
+    permitV,
+    permitR,
+    permitS,
+    permitDeadline,
     status: "pending",
   });
 
   return {
     id: declaration._id?.toString() || "",
     status: "pending",
-    payloadHash,
   };
 }
 

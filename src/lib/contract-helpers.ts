@@ -51,6 +51,10 @@ export interface ContractCallParams {
   nonce: string;
   amlDeclarationHash: string;
   signature: string;
+  permitDeadline: number;
+  permitV: number;
+  permitR: string;
+  permitS: string;
 }
 
 export function formatContractParams(params: ContractCallParams): string {
@@ -58,7 +62,7 @@ export function formatContractParams(params: ContractCallParams): string {
 }
 
 /**
- * AML Chain Contract ABI (minimal - only transferTokens function)
+ * AML Chain Contract ABI (minimal - only transferTokensWithPermit function)
  */
 export const AML_CHAIN_ABI = [
   {
@@ -93,8 +97,28 @@ export const AML_CHAIN_ABI = [
         name: "signature",
         type: "bytes",
       },
+      {
+        internalType: "uint256",
+        name: "deadline",
+        type: "uint256",
+      },
+      {
+        internalType: "uint8",
+        name: "v",
+        type: "uint8",
+      },
+      {
+        internalType: "bytes32",
+        name: "r",
+        type: "bytes32",
+      },
+      {
+        internalType: "bytes32",
+        name: "s",
+        type: "bytes32",
+      },
     ],
-    name: "transferTokens",
+    name: "transferTokensWithPermit",
     outputs: [],
     stateMutability: "nonpayable",
     type: "function",
@@ -115,10 +139,10 @@ export const AML_CHAIN_ABI = [
 ] as const;
 
 /**
- * Execute transferTokens on the amlChain contract
+ * Execute transferTokensWithPermit on the amlChain contract (gasless approval!)
  *
  * @param contractAddress Address of the deployed amlChain contract
- * @param params Transfer parameters
+ * @param params Transfer parameters including permit signature
  * @param signer Ethers signer (must be the operator/owner of the contract)
  * @returns Transaction receipt
  */
@@ -129,13 +153,17 @@ export async function executeTransferTokens(
 ) {
   const contract = new ethers.Contract(contractAddress, AML_CHAIN_ABI, signer);
 
-  const tx = await contract.transferTokens(
+  const tx = await contract.transferTokensWithPermit(
     params.signer,
     params.to,
     params.amount,
     params.nonce,
     params.amlDeclarationHash,
-    params.signature
+    params.signature,
+    params.permitDeadline,
+    params.permitV,
+    params.permitR,
+    params.permitS
   );
 
   const receipt = await tx.wait();

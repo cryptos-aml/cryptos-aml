@@ -29,7 +29,7 @@ export interface DeclarationMessage {
 
 /**
  * Request body for creating a new declaration (client-side)
- * Compatible with AMLChainV2 contract format (EIP-712)
+ * Compatible with AMLChainV2 contract format (EIP-712) + EIP-2612 Permit
  */
 export interface CreateDeclarationRequest {
   owner: string;
@@ -38,7 +38,10 @@ export interface CreateDeclarationRequest {
   signature: string;
   nonce: string;
   amlDeclarationHash: string;
-  deadline?: number; // Optional for V2
+  permitV: number;
+  permitR: string;
+  permitS: string;
+  permitDeadline: number;
 }
 
 /**
@@ -47,7 +50,6 @@ export interface CreateDeclarationRequest {
 export interface CreateDeclarationResponse {
   id: string;
   status: string;
-  payloadHash: string;
 }
 
 /**

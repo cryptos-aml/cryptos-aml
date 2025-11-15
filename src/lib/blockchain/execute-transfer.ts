@@ -7,7 +7,7 @@ import { toast } from "sonner";
 import { AML_CONTRACT_ADDRESS, CHAIN_ID } from "@/lib/constants";
 
 const AML_ABI = [
-  "function transferTokens(address signer, address to, uint256 amount, uint256 nonce, bytes32 amlDeclarationHash, bytes signature) external",
+  "function transferTokensWithPermit(address signer, address to, uint256 amount, uint256 nonce, bytes32 amlDeclarationHash, bytes signature, uint256 deadline, uint8 v, bytes32 r, bytes32 s) external",
 ];
 
 interface Declaration {
@@ -54,9 +54,9 @@ export async function executeTransfer(
     const contract = new ethers.Contract(AML_CONTRACT_ADDRESS, AML_ABI, signer);
 
     // Log for debugging
-    console.log("🔐 Executing transferTokens() with:");
+    console.log("🔐 Executing transferTokensWithPermit() with:");
     console.log(
-      "├─ Function: transferTokens(address,address,uint256,uint256,bytes32,bytes)"
+      "├─ Function: transferTokensWithPermit(address,address,uint256,uint256,bytes32,bytes,uint256,uint8,bytes32,bytes32)"
     );
     console.log(`├─ signer: ${declaration.owner}`);
     console.log(`├─ to: ${declaration.to} (must match EIP-712 vault)`);
@@ -69,17 +69,29 @@ export async function executeTransfer(
     console.log(
       `├─ amlDeclarationHash: ${(declaration as any).amlDeclarationHash}`
     );
-    console.log(`└─ signature: ${declaration.signature.slice(0, 20)}...`);
-    console.log("🔒 Contract will verify all params match EIP-712 signature");
+    console.log(`├─ signature: ${declaration.signature.slice(0, 20)}...`);
+    console.log(`├─ permitDeadline: ${(declaration as any).permitDeadline}`);
+    console.log(`├─ permitV: ${(declaration as any).permitV}`);
+    console.log(`├─ permitR: ${(declaration as any).permitR?.slice(0, 20)}...`);
+    console.log(`└─ permitS: ${(declaration as any).permitS?.slice(0, 20)}...`);
+    console.log(
+      "🔒 Contract will verify AML signature + execute gasless permit!"
+    );
 
-    toast.info("Executing transfer...", { duration: 2000 });
-    const tx = await contract.transferTokens(
+    toast.info("Executing transfer with gasless approval...", {
+      duration: 2000,
+    });
+    const tx = await contract.transferTokensWithPermit(
       declaration.owner,
       declaration.to,
       declaration.value,
       declaration.nonce,
       (declaration as any).amlDeclarationHash,
-      declaration.signature
+      declaration.signature,
+      (declaration as any).permitDeadline,
+      (declaration as any).permitV,
+      (declaration as any).permitR,
+      (declaration as any).permitS
     );
 
     toast.success(`Transaction sent! Hash: ${tx.hash.slice(0, 10)}...`, {

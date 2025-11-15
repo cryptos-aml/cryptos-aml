@@ -11,6 +11,10 @@ interface Declaration {
   nonce: string;
   signature: string;
   amlDeclarationHash?: string;
+  permitDeadline?: number;
+  permitV?: number;
+  permitR?: string;
+  permitS?: string;
 }
 
 /**
@@ -22,7 +26,11 @@ to: ${declaration.to}
 amount: ${declaration.value}
 nonce: ${declaration.nonce}
 amlDeclarationHash: ${declaration.amlDeclarationHash || "N/A"}
-signature: ${declaration.signature}`;
+signature: ${declaration.signature}
+deadline: ${declaration.permitDeadline || "N/A"}
+v: ${declaration.permitV ?? "N/A"}
+r: ${declaration.permitR || "N/A"}
+s: ${declaration.permitS || "N/A"}`;
 }
 
 /**

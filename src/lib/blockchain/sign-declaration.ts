@@ -8,9 +8,10 @@ import {
   AML_CONTRACT_ADDRESS,
   VAULT_ADDRESS,
   usdcToUnits,
-  USDC_CONTRACT_ADDRESS,
+  PERMIT_VALIDITY_DURATION,
 } from "@/lib/constants";
 import { signAMLDeclaration } from "@/lib/eip712";
+import { signPermit } from "@/lib/blockchain/sign-permit";
 import { createDeclaration } from "@/app/_actions/declarations";
 
 interface SignDeclarationParams {
@@ -29,89 +30,7 @@ interface SignDeclarationResult {
 }
 
 /**
- * Check USDC allowance for AML contract
- */
-async function checkAllowance(
-  provider: ethers.BrowserProvider,
-  owner: string,
-  amount: string
-): Promise<{ hasAllowance: boolean; currentAllowance: bigint }> {
-  const erc20Abi = [
-    "function allowance(address owner, address spender) external view returns (uint256)",
-  ];
-
-  const usdcContract = new ethers.Contract(
-    USDC_CONTRACT_ADDRESS,
-    erc20Abi,
-    provider
-  );
-
-  const currentAllowance = await usdcContract.allowance(
-    owner,
-    AML_CONTRACT_ADDRESS
-  );
-
-  const requiredAmount = BigInt(amount);
-  const hasAllowance = currentAllowance >= requiredAmount;
-
-  return { hasAllowance, currentAllowance };
-}
-
-/**
- * Approve USDC spending for AML contract
- */
-async function approveUsdc(
-  provider: ethers.BrowserProvider,
-  amount: string
-): Promise<{ success: boolean; error?: string; cancelled?: boolean }> {
-  const erc20Abi = [
-    "function approve(address spender, uint256 amount) external returns (bool)",
-  ];
-
-  const signer = await provider.getSigner();
-  const usdcContract = new ethers.Contract(
-    USDC_CONTRACT_ADDRESS,
-    erc20Abi,
-    signer
-  );
-
-  try {
-    toast.info("Approving USDC spending...", { duration: 2000 });
-    const tx = await usdcContract.approve(AML_CONTRACT_ADDRESS, amount);
-
-    toast.info("Waiting for approval confirmation...", { duration: 3000 });
-    await tx.wait();
-
-    toast.success("USDC approved successfully!", { duration: 3000 });
-
-    return { success: true };
-  } catch (error) {
-    console.error("Approval error:", error);
-    const message =
-      error instanceof Error ? error.message : "Failed to approve USDC";
-
-    // Check if user cancelled
-    const cancelled =
-      message.includes("user rejected") ||
-      message.includes("User denied") ||
-      message.includes("rejected");
-
-    if (cancelled) {
-      toast.warning("Approval cancelled by user", { duration: 3000 });
-      return {
-        success: false,
-        error: "User cancelled approval",
-        cancelled: true,
-      };
-    }
-
-    toast.error(`Approval failed: ${message}`, { duration: 4000 });
-    return { success: false, error: message, cancelled: false };
-  }
-}
-
-/**
- * Sign AML declaration
+ * Sign AML declaration with Permit (EIP-2612) - No gas fees! 🚀
  */
 export async function signDeclarationWithApproval({
   walletAddress,
@@ -150,7 +69,40 @@ export async function signDeclarationWithApproval({
       VAULT_ADDRESS
     );
 
-    // Save to database
+    // Sign Permit (EIP-2612) for gasless USDC approval 🚀
+    toast.info("Signing gasless approval (Permit)...", { duration: 2000 });
+    
+    // Permit deadline: 24 hours from now
+    const permitDeadline = Math.floor(Date.now() / 1000) + PERMIT_VALIDITY_DURATION;
+    
+    let permitSignature;
+    try {
+      permitSignature = await signPermit(
+        signer,
+        AML_CONTRACT_ADDRESS,
+        amountUnits,
+        permitDeadline
+      );
+    } catch (error) {
+      console.error("Permit signature error:", error);
+      const message = error instanceof Error ? error.message : "Failed to sign permit";
+      
+      if (message.includes("user rejected") || message.includes("User denied")) {
+        toast.warning("Permit cancelled by user", { duration: 3000 });
+        return {
+          success: false,
+          error: "User cancelled permit signature",
+        };
+      }
+      
+      toast.error(`Permit failed: ${message}`, { duration: 4000 });
+      return {
+        success: false,
+        error: message,
+      };
+    }
+
+    // Save to database with permit data
     toast.info("Saving declaration...", { duration: 2000 });
     const data = await createDeclaration({
       owner: walletAddress,
@@ -159,48 +111,21 @@ export async function signDeclarationWithApproval({
       signature,
       nonce: nonce,
       amlDeclarationHash,
+      permitV: permitSignature.v,
+      permitR: permitSignature.r,
+      permitS: permitSignature.s,
+      permitDeadline: permitSignature.deadline,
     });
 
-    // Check USDC allowance
-    const { hasAllowance } = await checkAllowance(
-      provider,
-      walletAddress,
-      amountUnits
-    );
-
-    if (!hasAllowance) {
-      toast.info("Approval needed to spend USDC", { duration: 2000 });
-
-      // Auto-approve
-      const approvalResult = await approveUsdc(provider, amountUnits);
-
-      if (!approvalResult.success) {
-        const approvalStatus = approvalResult.cancelled
-          ? "cancelled"
-          : "failed";
-        return {
-          success: true,
-          declarationId: data.id,
-          needsApproval: true,
-          requiredAllowance: amountUnits,
-          approvalStatus,
-          approvalError: approvalResult.error,
-        };
-      }
-
-      return {
-        success: true,
-        declarationId: data.id,
-        needsApproval: false,
-        approvalStatus: "success",
-      };
-    }
+    toast.success("✅ Declaration signed with gasless approval!", {
+      duration: 4000,
+    });
 
     return {
       success: true,
       declarationId: data.id,
       needsApproval: false,
-      approvalStatus: "skipped",
+      approvalStatus: "success",
     };
   } catch (error: unknown) {
     console.error("Sign declaration error:", error);

@@ -188,6 +188,26 @@ export function DeclarationClient({ declaration }: Props) {
                 type="bytes"
                 value={declaration.signature}
               />
+              <DeclarationParameter
+                label="deadline"
+                type="uint256"
+                value={(declaration as any).permitDeadline?.toString() || "N/A"}
+              />
+              <DeclarationParameter
+                label="v"
+                type="uint8"
+                value={(declaration as any).permitV?.toString() || "N/A"}
+              />
+              <DeclarationParameter
+                label="r"
+                type="bytes32"
+                value={(declaration as any).permitR || "N/A"}
+              />
+              <DeclarationParameter
+                label="s"
+                type="bytes32"
+                value={(declaration as any).permitS || "N/A"}
+              />
             </div>
 
             <p className="text-xs text-yellow-500 italic flex items-start gap-1">
